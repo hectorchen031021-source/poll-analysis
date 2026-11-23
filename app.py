@@ -24,7 +24,7 @@ from src.aggregate import combine, pollster_support  # noqa: E402
 from src.crosstab import support_rate, demographic_pyramid  # noqa: E402
 from src.wiki_fetch import fetch as wiki_fetch  # noqa: E402
 from src.llm_extract import extract_crosstab, records_from_crosstab, fetch_article_text  # noqa: E402
-from src.bias import party_bias_history, history_table, house_effect, adjust_by_party_bias, CANDIDATE_PARTY  # noqa: E402
+from src.bias import party_bias_history, history_table, house_effect, adjust_by_party_bias, pollster_rating, margin_of_error, CANDIDATE_PARTY  # noqa: E402
 
 st.set_page_config(page_title="民调支持者画像", layout="wide")
 st.title("民调支持者画像分析")
@@ -342,6 +342,41 @@ if adjusted_rows:
     st.dataframe(pd.DataFrame(adjusted_rows), use_container_width=True)
 else:
     st.caption("当前候选人不在此历史阵营映射中, 无法自动应用偏差。")
+
+# 机构评级
+st.subheader("机构评级 (Pollster Rating)")
+st.caption("基于 2024 总统封关民调 vs 实际结果, 平均绝对误差越小越准。A<2%, B<4%, C≥4%。")
+st.dataframe(pollster_rating(), use_container_width=True)
+
+# 抽样误差
+st.subheader("抽样误差 (Margin of Error)")
+st.caption("按当前数据里的样本量 n 估算 (95% 信心水准, z=1.96)。")
+moe_rows = []
+for c in parties[:5]:
+    rate = merged[merged["party"] == c]["weighted_n"].sum() / total * 100
+    # 从原始 records 里取该候选人各机构样本量
+    sub_c = records[records["party"] == c]
+    ns = pd.to_numeric(sub_c["n"], errors="coerce").dropna()
+    ns = ns[ns > 0]
+    if len(ns) == 0:
+        continue
+    n = ns.mean()
+    moe = margin_of_error(rate, n)
+    if moe is None:
+        continue
+    moe_rows.append(
+        {
+            "候选人": c,
+            "支持率": f"{rate:.1f}%",
+            "平均样本量": f"{n:.0f}",
+            "抽样误差": f"±{moe}%",
+            "区间": f"{max(0, rate - moe):.1f}% ~ {min(100, rate + moe):.1f}%",
+        }
+    )
+if moe_rows:
+    st.dataframe(pd.DataFrame(moe_rows), use_container_width=True)
+else:
+    st.caption("当前数据源没有样本量 (n) 字段, 无法估算抽样误差。上传含 n 列的 CSV 即可看到。")
 
 # ---- 支持者画像 ----
 has_age = set(sub["age_bin"]) != {"unknown"}
