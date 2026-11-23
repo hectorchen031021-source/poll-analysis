@@ -7,5 +7,6 @@ venv/
 data/output/*
 !data/output/demo_pollco/
 !data/output/taipei_mayor_demo/
+!data/output/taipei_mayor_2026/
 data/processed/
 .ipynb_checkpoints/

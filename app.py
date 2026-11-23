@@ -136,42 +136,50 @@ st.dataframe(
 )
 
 # ---- 支持者画像 ----
-st.subheader(f"{party} 支持者画像 — 按年龄")
-age_df = support_rate(merged, by=["age_bin"], party=party, weighted=True)
-fig2 = go.Figure(
-    go.Bar(
-        x=age_df["age_bin"],
-        y=age_df["support_rate"],
-        marker_color="#1f77b4",
-        text=age_df["support_rate"].round(3),
-        textposition="outside",
-    )
-)
-fig2.update_layout(yaxis_title="支持率", xaxis_title="年龄段", yaxis_range=[0, 1])
-st.plotly_chart(fig2, use_container_width=True)
+has_age = set(sub["age_bin"]) != {"unknown"}
+has_gender = set(sub["gender"]) != {"unknown"}
 
-st.subheader("性别 × 年龄 人口金字塔")
-pyr = demographic_pyramid(merged, party=party)
-fig3 = go.Figure()
-for gender, color, side in [("male", "#1f77b4", -1), ("female", "#ff7f0e", 1)]:
-    psub = pyr[pyr["gender"] == gender]
-    fig3.add_trace(
-        go.Bar(
-            y=psub["age_bin"],
-            x=side * psub["support_rate"],
-            orientation="h",
-            name=gender,
-            marker_color=color,
-            text=psub["support_rate"].round(3),
-            textposition="outside",
+if has_age or has_gender:
+    if has_age:
+        st.subheader(f"{party} 支持者画像 — 按年龄")
+        age_df = support_rate(merged, by=["age_bin"], party=party, weighted=True)
+        fig2 = go.Figure(
+            go.Bar(
+                x=age_df["age_bin"],
+                y=age_df["support_rate"],
+                marker_color="#1f77b4",
+                text=age_df["support_rate"].round(3),
+                textposition="outside",
+            )
         )
-    )
-fig3.update_layout(
-    barmode="overlay",
-    yaxis_title="年龄段",
-    xaxis_title="男性 ← 支持率 → 女性",
-)
-st.plotly_chart(fig3, use_container_width=True)
+        fig2.update_layout(yaxis_title="支持率", xaxis_title="年龄段", yaxis_range=[0, 1])
+        st.plotly_chart(fig2, use_container_width=True)
+
+    if has_age and has_gender:
+        st.subheader("性别 × 年龄 人口金字塔")
+        pyr = demographic_pyramid(merged, party=party)
+        fig3 = go.Figure()
+        for gender, color, side in [("male", "#1f77b4", -1), ("female", "#ff7f0e", 1)]:
+            psub = pyr[pyr["gender"] == gender]
+            fig3.add_trace(
+                go.Bar(
+                    y=psub["age_bin"],
+                    x=side * psub["support_rate"],
+                    orientation="h",
+                    name=gender,
+                    marker_color=color,
+                    text=psub["support_rate"].round(3),
+                    textposition="outside",
+                )
+            )
+        fig3.update_layout(
+            barmode="overlay",
+            yaxis_title="年龄段",
+            xaxis_title="男性 ← 支持率 → 女性",
+        )
+        st.plotly_chart(fig3, use_container_width=True)
+else:
+    st.info("此数据源没有年龄/性别交叉表(如维基百科只汇总全体支持率), 只能看趋势与总支持率。")
 
 # ---- 完整切分表 ----
 st.subheader("完整切分表")
