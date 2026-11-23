@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT))
 
 from src.aggregate import combine, pollster_support  # noqa: E402
 from src.crosstab import support_rate, demographic_pyramid  # noqa: E402
+from src.wiki_fetch import fetch as wiki_fetch  # noqa: E402
 
 st.set_page_config(page_title="民调支持者画像", layout="wide")
 st.title("民调支持者画像分析")
@@ -92,6 +93,23 @@ with st.sidebar:
         help="必填列: party(候选人) + n或weighted_n(人数)。建议: survey_date(YYYY-MM-DD)、pollster(机构)。可选: age_bin/gender/region/education。",
     )
 
+    st.header("从维基百科抓取")
+    wiki_query = st.text_input(
+        "选举词条名或网址",
+        placeholder="如: 2026年台北市市长选举",
+    )
+    if st.button("抓取民调"):
+        if not wiki_query.strip():
+            st.warning("请输入选举词条名")
+        else:
+            try:
+                st.session_state["wiki_records"] = wiki_fetch(wiki_query)
+                st.session_state["wiki_query"] = wiki_query.strip()
+                st.success(f"抓到 {len(st.session_state['wiki_records'])} 行")
+            except Exception as e:
+                st.error(f"抓取失败: {e}")
+    wiki_records = st.session_state.get("wiki_records")
+
     st.header("选择选举")
     elections = list_elections()
 
@@ -106,11 +124,13 @@ with st.sidebar:
         except Exception as e:
             st.error(f"上传文件解析失败: {e}")
 
-    if not elections and uploaded_records is None:
-        st.warning("还没有任何选举数据。可上传 CSV, 或在 data/output/ 下建选举目录。")
+    if not elections and uploaded_records is None and wiki_records is None:
+        st.warning("还没有数据。可上传 CSV, 或输入选举词条从维基百科抓取。")
         st.stop()
 
     options = elections.copy()
+    if wiki_records is not None:
+        options.insert(0, f"维基抓取: {st.session_state.get('wiki_query', '')}")
     if uploaded_records is not None:
         options.insert(0, "上传的数据")
 
@@ -118,11 +138,13 @@ with st.sidebar:
 
     if election == "上传的数据":
         records = uploaded_records
+    elif election.startswith("维基抓取:"):
+        records = wiki_records
     else:
         records = load_election(election)
 
-    if records.empty:
-        st.error(f"选举 {election} 下没有加权结果。")
+    if records is None or records.empty:
+        st.error(f"选举 {election} 下没有数据。")
         st.stop()
 
     pollsters = sorted(records["pollster"].unique())
