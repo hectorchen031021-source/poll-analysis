@@ -114,29 +114,33 @@ with st.sidebar:
 
     st.header("LLM 提取交叉表")
     with st.expander("展开 (从新闻正文提取年龄/性别)", expanded=False):
-        # 从本浏览器 localStorage 读回已保存的 API key
-        saved_key = st_javascript("localStorage.getItem('poll_api_key')")
-        if saved_key and not st.session_state.get("api_key"):
-            st.session_state["api_key"] = saved_key
+        # 从本浏览器 localStorage 读回已保存的 API key (st_javascript 首次异步, 等待一次 rerun)
+        if "saved_api_key" not in st.session_state:
+            _saved = st_javascript("localStorage.getItem('poll_api_key')")
+            if _saved is None:
+                st.stop()
+            st.session_state["saved_api_key"] = "" if _saved == "null" else _saved
 
         api_key = st.text_input(
             "API Key",
             type="password",
             key="api_key",
+            value=st.session_state["saved_api_key"],
             help="保存在你自己的浏览器 localStorage, 仅本设备可见, 不会上传。",
         )
         c1, c2 = st.columns([1, 1])
         if c1.button("保存到本浏览器"):
             if api_key.strip():
                 st_javascript(f"localStorage.setItem('poll_api_key', '{api_key.strip()}')")
-                st.session_state["api_key"] = api_key.strip()
+                st.session_state["saved_api_key"] = api_key.strip()
                 st.success("已保存, 下次打开本浏览器自动填入")
             else:
                 st.warning("API Key 为空")
         if c2.button("清除已保存"):
             st_javascript("localStorage.removeItem('poll_api_key')")
-            st.session_state["api_key"] = ""
-            st.success("已清除")
+            st.session_state["saved_api_key"] = ""
+            st.session_state.pop("api_key", None)
+            st.rerun()
 
         base_url = st.text_input("Base URL", value="https://api.deepseek.com", key="llm_base")
         model = st.text_input("模型", value="deepseek-chat", key="llm_model")
