@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 from src.aggregate import combine, pollster_support  # noqa: E402
 from src.crosstab import support_rate, demographic_pyramid  # noqa: E402
 from src.wiki_fetch import fetch as wiki_fetch  # noqa: E402
+from src.llm_extract import extract_crosstab, records_from_crosstab  # noqa: E402
 
 st.set_page_config(page_title="民调支持者画像", layout="wide")
 st.title("民调支持者画像分析")
@@ -110,6 +111,29 @@ with st.sidebar:
                 st.error(f"抓取失败: {e}")
     wiki_records = st.session_state.get("wiki_records")
 
+    st.header("LLM 提取交叉表")
+    with st.expander("展开 (从新闻正文提取年龄/性别)", expanded=False):
+        api_key = st.text_input("API Key", type="password", key="llm_key")
+        base_url = st.text_input("Base URL", value="https://api.deepseek.com", key="llm_base")
+        model = st.text_input("模型", value="deepseek-chat", key="llm_model")
+        news_text = st.text_area(
+            "粘贴新闻正文",
+            height=150,
+            key="llm_text",
+            help="把包含年龄/性别/教育/地区交叉表的新闻文字粘进来。",
+        )
+        if st.button("提取交叉表"):
+            if not api_key or not news_text.strip():
+                st.warning("需要 API Key 和新闻正文")
+            else:
+                try:
+                    data = extract_crosstab(news_text.strip(), api_key, base_url, model)
+                    st.session_state["llm_records"] = records_from_crosstab(data)
+                    st.success(f"提取到 {len(st.session_state['llm_records'])} 行")
+                except Exception as e:
+                    st.error(f"提取失败: {e}")
+    llm_records = st.session_state.get("llm_records")
+
     st.header("选择选举")
     elections = list_elections()
 
@@ -124,11 +148,13 @@ with st.sidebar:
         except Exception as e:
             st.error(f"上传文件解析失败: {e}")
 
-    if not elections and uploaded_records is None and wiki_records is None:
-        st.warning("还没有数据。可上传 CSV, 或输入选举词条从维基百科抓取。")
+    if not elections and uploaded_records is None and wiki_records is None and llm_records is None:
+        st.warning("还没有数据。可上传 CSV, 输入选举词条从维基百科抓取, 或用 LLM 提取新闻交叉表。")
         st.stop()
 
     options = elections.copy()
+    if llm_records is not None:
+        options.insert(0, "LLM 提取的数据")
     if wiki_records is not None:
         options.insert(0, f"维基抓取: {st.session_state.get('wiki_query', '')}")
     if uploaded_records is not None:
@@ -140,6 +166,8 @@ with st.sidebar:
         records = uploaded_records
     elif election.startswith("维基抓取:"):
         records = wiki_records
+    elif election == "LLM 提取的数据":
+        records = llm_records
     else:
         records = load_election(election)
 
