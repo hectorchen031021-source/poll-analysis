@@ -45,25 +45,81 @@ def load_election(election: str) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
-# ---- 侧边栏: 选选举 ----
+UPLOAD_COLS = ["pollster", "survey_date", "method", "age_bin", "gender", "region", "education", "party", "n", "weighted_n"]
+
+
+def normalize_uploaded(df: pd.DataFrame) -> pd.DataFrame:
+    """把用户上传的 CSV 规范化成统一 schema, 宽容处理缺列。
+
+    必填: party 列 + (n 或 weighted_n 之一)。
+    缺列自动填默认值 (unknown / 占位日期)。
+    """
+    if "party" not in df.columns:
+        raise ValueError("CSV 缺少必要列 'party' (候选人/政党)")
+    if "n" not in df.columns and "weighted_n" not in df.columns:
+        raise ValueError("CSV 需要 'n' 或 'weighted_n' 列 (人数)")
+
+    def get(col: str, default: str) -> pd.Series:
+        if col in df.columns:
+            return df[col].fillna(default).astype(str)
+        return pd.Series(default, index=df.index)
+
+    out = pd.DataFrame(index=df.index)
+    out["pollster"] = get("pollster", "上传数据")
+    out["survey_date"] = get("survey_date", "2026-01-01")
+    out["method"] = get("method", "unknown")
+    out["age_bin"] = get("age_bin", "unknown")
+    out["gender"] = get("gender", "unknown")
+    out["region"] = get("region", "unknown")
+    out["education"] = get("education", "unknown")
+    out["party"] = df["party"].fillna("unknown").astype(str)
+
+    if "n" in df.columns:
+        out["n"] = pd.to_numeric(df["n"], errors="coerce").fillna(0)
+        out["weighted_n"] = out["n"] if "weighted_n" not in df.columns else pd.to_numeric(df["weighted_n"], errors="coerce").fillna(0)
+    else:
+        out["weighted_n"] = pd.to_numeric(df["weighted_n"], errors="coerce").fillna(0)
+        out["n"] = out["weighted_n"]
+    return out[UPLOAD_COLS]
+
+
+# ---- 侧边栏: 上传 + 选选举 ----
 with st.sidebar:
+    st.header("上传你的数据")
+    uploaded_file = st.file_uploader(
+        "上传民调 CSV",
+        type="csv",
+        help="必填列: party(候选人) + n或weighted_n(人数)。建议: survey_date(YYYY-MM-DD)、pollster(机构)。可选: age_bin/gender/region/education。",
+    )
+
     st.header("选择选举")
     elections = list_elections()
 
-    if not elections:
-        st.warning("还没有任何选举数据。")
-        st.markdown(
-            "**如何添加一个选举:**\n\n"
-            "1. 在 `data/output/` 下建一个子目录 (如 `my_election/`)\n"
-            "2. 把各家机构的加权 CSV 放进去 (`机构名_weighted.csv`)\n"
-            "3. 刷新本页\n\n"
-            "加权 CSV 可由 `scripts/weight/run_pipeline.py` 生成。"
-        )
+    uploaded_records = None
+    if uploaded_file is not None:
+        try:
+            if st.session_state.get("up_key") != uploaded_file.name:
+                st.session_state["up_records"] = normalize_uploaded(pd.read_csv(uploaded_file))
+                st.session_state["up_key"] = uploaded_file.name
+            uploaded_records = st.session_state["up_records"]
+            st.success(f"已加载 {uploaded_file.name} ({len(uploaded_records)} 行)")
+        except Exception as e:
+            st.error(f"上传文件解析失败: {e}")
+
+    if not elections and uploaded_records is None:
+        st.warning("还没有任何选举数据。可上传 CSV, 或在 data/output/ 下建选举目录。")
         st.stop()
 
-    election = st.selectbox("选举", elections)
+    options = elections.copy()
+    if uploaded_records is not None:
+        options.insert(0, "上传的数据")
 
-    records = load_election(election)
+    election = st.selectbox("选举", options)
+
+    if election == "上传的数据":
+        records = uploaded_records
+    else:
+        records = load_election(election)
 
     if records.empty:
         st.error(f"选举 {election} 下没有加权结果。")
