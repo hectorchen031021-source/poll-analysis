@@ -97,9 +97,12 @@ def generate() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+ELECTION = "taipei_mayor_demo"
+
+
 def main() -> None:
     records = generate()
-    out_dir = ROOT / "data" / "output"
+    out_dir = ROOT / "data" / "output" / ELECTION
     out_dir.mkdir(parents=True, exist_ok=True)
 
     for name in POLLSTERS:

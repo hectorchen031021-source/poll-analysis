@@ -72,7 +72,7 @@ def normalize_pollco(df: pd.DataFrame) -> pd.DataFrame:
 
     长格式计数表 → 统一 schema。
     """
-    out = pd.DataFrame()
+    out = pd.DataFrame(index=df.index)
     out["pollster"] = "pollco"
     out["survey_date"] = df.get("survey_date", "2026-11-01")
     out["method"] = METHOD_MAP["pollco"]
@@ -125,8 +125,15 @@ def validate(
     return records
 
 
-def load_raw(pollster: str, path: str | Path | None = None) -> pd.DataFrame:
-    """读取某机构原始数据。默认从 data/raw/{pollster}.csv 读。"""
+def load_raw(
+    pollster: str,
+    election: str = "demo_pollco",
+    path: str | Path | None = None,
+) -> pd.DataFrame:
+    """读取某机构原始数据。默认从 data/raw/{election}/{pollster}.csv 读。"""
     if path is None:
-        path = Path(__file__).resolve().parent.parent / "data" / "raw" / f"{pollster}.csv"
+        path = (
+            Path(__file__).resolve().parent.parent
+            / "data" / "raw" / election / f"{pollster}.csv"
+        )
     return pd.read_csv(path)

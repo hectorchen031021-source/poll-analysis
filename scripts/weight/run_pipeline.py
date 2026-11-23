@@ -1,7 +1,7 @@
 """加权流水线: 归一化 → raking → 写出 weighted 计数表。
 
 用法:
-    python scripts/weight/run_pipeline.py --pollster pollco
+    python scripts/weight/run_pipeline.py --pollster pollco --election my_election
 """
 
 from __future__ import annotations
@@ -26,14 +26,14 @@ TARGETS = {
 }
 
 
-def main(pollster: str) -> None:
-    raw = load_raw(pollster)
+def main(pollster: str, election: str) -> None:
+    raw = load_raw(pollster, election)
     records = normalize(raw, pollster)
 
     weights = rake(records, TARGETS)
     weighted = apply_weights(records, weights)
 
-    out_dir = ROOT / "data" / "output"
+    out_dir = ROOT / "data" / "output" / election
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"{pollster}_weighted.csv"
     weighted.to_csv(out_path, index=False)
@@ -46,5 +46,6 @@ def main(pollster: str) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--pollster", default="pollco")
+    parser.add_argument("--election", default="demo_pollco")
     args = parser.parse_args()
-    main(args.pollster)
+    main(args.pollster, args.election)

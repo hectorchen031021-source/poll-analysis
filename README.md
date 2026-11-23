@@ -15,31 +15,42 @@
 ```
 poll-analysis/
 ├── data/
-│   ├── raw/            # 各家原始数据(不动,版本化)
-│   ├── processed/      # 归一化后的统一格式
-│   └── output/         # 加权结果、交叉表、图
+│   ├── raw/            # 原始数据, 按选举分目录
+│   └── output/         # 加权结果, 按选举分目录
+│       └── {选举名}/   # 每个选举一个子目录
+│           └── {机构名}_weighted.csv
 ├── schema/
 │   └── poll_record.json   # 统一数据契约(唯一真源)
 ├── src/
-│   ├── ingest.py       # 读取各家原始数据
 │   ├── normalize.py    # 归一化到统一 schema
 │   ├── weight.py       # raking / IPF 加权
+│   ├── aggregate.py    # 多机构合并(样本量+时间衰减)
+│   ├── trend.py        # 支持率时间趋势
 │   └── crosstab.py     # 交叉表 + 人口金字塔
 ├── scripts/
-│   ├── fetch/          # 采集下载
-│   ├── clean/          # 逐机构清洗脚本(每个机构一个文件)
-│   ├── weight/         # 加权流水线
+│   ├── weight/         # 加权流水线 + demo 生成器
 │   └── analyze/        # 分析入口
-├── notebooks/          # 探索性分析
+├── app.py              # Streamlit 通用分析界面
+├── notebooks/
 └── tests/
 ```
 
 ## 数据流
 
 ```
-raw/ --ingest--> 中间表 --normalize--> processed/(统一schema)
-      --weight(raking)--> output/加权计数表 --crosstab--> 图表/结论
+raw/{选举}/ --normalize--> 统一schema --weight(raking)--> output/{选举}/加权计数表
+      --aggregate(多机构合并)--> 支持率/趋势/画像
 ```
+
+## 支持任意选举
+
+项目对选举类型**无假设**。每个选举就是 `data/output/` 下的一个子目录。
+台北市长、总统、立委、任何国家的选举都一样——只要数据进了统一 schema,就能分析。
+
+**新增一个选举:**
+1. 在 `data/output/` 下建子目录,如 `presidential_2028/`
+2. 把各家机构的加权 CSV 放进去(`机构名_weighted.csv`)
+3. 刷新界面,侧边栏就会出现这个选举
 
 ## 统一 Schema(关键)
 
@@ -81,8 +92,15 @@ raw/ --ingest--> 中间表 --normalize--> processed/(统一schema)
 
 ```bash
 pip install -r requirements.txt
-python scripts/weight/run_pipeline.py --pollster yougov
-python scripts/analyze/crosstab.py --age_bin 18-29 --gender female
+
+# 启动分析界面 (推荐)
+streamlit run app.py
+
+# 或命令行加权流水线
+python scripts/weight/run_pipeline.py --pollster yougov --election my_election
+
+# 或命令行切支持率
+python scripts/analyze/crosstab.py --pollster pollco --party PartyA
 ```
 
 ## 技术选型

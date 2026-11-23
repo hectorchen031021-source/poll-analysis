@@ -1,4 +1,6 @@
-"""民调支持者画像 — Streamlit 界面。
+"""民调支持者画像 — 通用分析界面。
+
+支持任意选举: 每个选举在 data/output/ 下一个子目录, 里面放各家加权 CSV。
 
 运行:
     streamlit run app.py
@@ -17,33 +19,54 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from src.aggregate import combine, pollster_support  # noqa: E402
-from src.trend import trend, moving_average  # noqa: E402
 from src.crosstab import support_rate, demographic_pyramid  # noqa: E402
 
 st.set_page_config(page_title="民调支持者画像", layout="wide")
 st.title("民调支持者画像分析")
 
-# ---- 数据加载 ----
 OUTPUT_DIR = ROOT / "data" / "output"
 
 
 @st.cache_data
-def load_all() -> pd.DataFrame:
+def list_elections() -> list[str]:
+    if not OUTPUT_DIR.exists():
+        return []
+    return sorted(d.name for d in OUTPUT_DIR.iterdir() if d.is_dir())
+
+
+@st.cache_data
+def load_election(election: str) -> pd.DataFrame:
     frames = []
-    for f in sorted(OUTPUT_DIR.glob("*_weighted.csv")):
-        df = pd.read_csv(f)
-        frames.append(df)
+    folder = OUTPUT_DIR / election
+    for f in sorted(folder.glob("*_weighted.csv")):
+        frames.append(pd.read_csv(f))
     if not frames:
         return pd.DataFrame()
     return pd.concat(frames, ignore_index=True)
 
 
-records = load_all()
-
+# ---- 侧边栏: 选选举 ----
 with st.sidebar:
-    st.header("数据")
+    st.header("选择选举")
+    elections = list_elections()
+
+    if not elections:
+        st.warning("还没有任何选举数据。")
+        st.markdown(
+            "**如何添加一个选举:**\n\n"
+            "1. 在 `data/output/` 下建一个子目录 (如 `my_election/`)\n"
+            "2. 把各家机构的加权 CSV 放进去 (`机构名_weighted.csv`)\n"
+            "3. 刷新本页\n\n"
+            "加权 CSV 可由 `scripts/weight/run_pipeline.py` 生成。"
+        )
+        st.stop()
+
+    election = st.selectbox("选举", elections)
+
+    records = load_election(election)
+
     if records.empty:
-        st.error("data/output/ 下无加权结果。先运行流水线或 make_taipei_demo.py。")
+        st.error(f"选举 {election} 下没有加权结果。")
         st.stop()
 
     pollsters = sorted(records["pollster"].unique())
@@ -115,7 +138,6 @@ st.dataframe(
 # ---- 支持者画像 ----
 st.subheader(f"{party} 支持者画像 — 按年龄")
 age_df = support_rate(merged, by=["age_bin"], party=party, weighted=True)
-age_order = sorted(age_df["age_bin"].unique())
 fig2 = go.Figure(
     go.Bar(
         x=age_df["age_bin"],

@@ -38,5 +38,5 @@ def test_validate_rejects_bad_age():
 
 
 def load_sample() -> pd.DataFrame:
-    path = ROOT / "data" / "raw" / "pollco.csv"
+    path = ROOT / "data" / "raw" / "demo_pollco" / "pollco.csv"
     return pd.read_csv(path)
