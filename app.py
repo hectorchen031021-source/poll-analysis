@@ -15,6 +15,7 @@ from pathlib import Path
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 from streamlit_javascript import st_javascript
 
 ROOT = Path(__file__).resolve().parent
@@ -30,6 +31,32 @@ st.set_page_config(page_title="民调支持者画像", layout="wide")
 st.title("民调支持者画像分析")
 
 OUTPUT_DIR = ROOT / "data" / "output"
+
+CFG_KEY = "poll_llm_cfg"
+
+
+def load_llm_config() -> dict:
+    """按可靠性读取 LLM 配置: Streamlit Secrets > 浏览器 localStorage。"""
+    cfg: dict = {}
+    # 1) Streamlit Secrets (云端最可靠, 重启不丢)
+    try:
+        if "llm" in st.secrets:
+            cfg.update(dict(st.secrets["llm"]))
+    except Exception:
+        pass
+    # 2) 浏览器 localStorage (尽力而为; 首次渲染 JS 返回空串, 不会卡住)
+    try:
+        raw = st_javascript(f"localStorage.getItem('{CFG_KEY}') || ''")
+        if raw and raw not in ("null", "", None):
+            cfg.update(json.loads(raw))
+    except Exception:
+        pass
+    return cfg
+
+
+def save_llm_config_to_browser(cfg: dict) -> None:
+    payload = json.dumps(json.dumps(cfg, ensure_ascii=False))
+    st_javascript(f"localStorage.setItem('{CFG_KEY}', {payload}); ''")
 
 
 @st.cache_data
@@ -116,54 +143,46 @@ with st.sidebar:
 
     st.header("LLM 提取交叉表")
     with st.expander("展开 (从新闻正文提取年龄/性别)", expanded=False):
-        # 从本浏览器 localStorage 读回已保存的 LLM 配置 (api_key/base_url/model)
-        if "llm_cfg_loaded" not in st.session_state:
-            _raw = st_javascript("localStorage.getItem('poll_llm_cfg')")
-            if _raw is None:
-                st.stop()
-            try:
-                _cfg = json.loads(_raw) if _raw and _raw != "null" else {}
-            except Exception:
-                _cfg = {}
-            st.session_state["llm_cfg_loaded"] = True
-            st.session_state["saved_cfg"] = _cfg
+        # 读取配置: Secrets > 浏览器 localStorage
+        if "saved_cfg" not in st.session_state:
+            st.session_state["saved_cfg"] = load_llm_config()
+        saved_cfg = st.session_state["saved_cfg"]
 
-        saved_cfg = st.session_state.get("saved_cfg", {})
+        # 用 setdefault 给 widget key 种初值, 避免 value/key 冲突
+        for k, field in [
+            ("api_key", "api_key"),
+            ("llm_base", "base_url"),
+            ("llm_model", "model"),
+        ]:
+            if k not in st.session_state:
+                st.session_state[k] = saved_cfg.get(field, {"llm_base": "https://api.deepseek.com", "llm_model": "deepseek-chat"}.get(k, ""))
 
-        api_key = st.text_input(
-            "API Key",
-            type="password",
-            key="api_key",
-            value=saved_cfg.get("api_key", ""),
-            help="保存在你自己的浏览器 localStorage, 仅本设备可见, 不会上传。",
-        )
-        base_url = st.text_input(
-            "Base URL",
-            key="llm_base",
-            value=saved_cfg.get("base_url", "https://api.deepseek.com"),
-        )
-        model = st.text_input(
-            "模型",
-            key="llm_model",
-            value=saved_cfg.get("model", "deepseek-chat"),
-        )
+        try:
+            from_streamlit_secrets = bool(st.secrets.get("llm", {}).get("api_key"))
+        except Exception:
+            from_streamlit_secrets = False
+        if from_streamlit_secrets:
+            st.caption("API Key 来自 Streamlit Secrets (云端持久)。")
+
+        api_key = st.text_input("API Key", type="password", key="api_key")
+        base_url = st.text_input("Base URL", key="llm_base")
+        model = st.text_input("模型", key="llm_model")
 
         c1, c2 = st.columns([1, 1])
         if c1.button("保存配置到本浏览器"):
             cfg_to_save = {
-                "api_key": api_key.strip(),
-                "base_url": base_url.strip(),
-                "model": model.strip(),
+                "api_key": st.session_state["api_key"].strip(),
+                "base_url": st.session_state["llm_base"].strip(),
+                "model": st.session_state["llm_model"].strip(),
             }
-            st_javascript(f"localStorage.setItem('poll_llm_cfg', '{json.dumps(cfg_to_save, ensure_ascii=False)}')")
+            save_llm_config_to_browser(cfg_to_save)
             st.session_state["saved_cfg"] = cfg_to_save
-            st.success("已保存, 下次打开本浏览器自动填入")
-        if c2.button("清除已保存"):
-            st_javascript("localStorage.removeItem('poll_llm_cfg')")
+            st.success("已存到本浏览器。若同时设了 Secrets, 以 Secrets 为准。")
+        if c2.button("清除浏览器配置"):
+            st_javascript(f"localStorage.removeItem('{CFG_KEY}'); ''")
             st.session_state["saved_cfg"] = {}
-            st.session_state.pop("api_key", None)
-            st.session_state.pop("llm_base", None)
-            st.session_state.pop("llm_model", None)
+            for k in ["api_key", "llm_base", "llm_model"]:
+                st.session_state.pop(k, None)
             st.rerun()
         news_url = st.text_input(
             "新闻网址 (留空则用下面粘贴的文字)",
