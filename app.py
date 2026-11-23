@@ -14,6 +14,7 @@ from pathlib import Path
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from streamlit_javascript import st_javascript
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
@@ -113,7 +114,30 @@ with st.sidebar:
 
     st.header("LLM 提取交叉表")
     with st.expander("展开 (从新闻正文提取年龄/性别)", expanded=False):
-        api_key = st.text_input("API Key", type="password", key="llm_key")
+        # 从本浏览器 localStorage 读回已保存的 API key
+        saved_key = st_javascript("localStorage.getItem('poll_api_key')")
+        if saved_key and not st.session_state.get("api_key"):
+            st.session_state["api_key"] = saved_key
+
+        api_key = st.text_input(
+            "API Key",
+            type="password",
+            key="api_key",
+            help="保存在你自己的浏览器 localStorage, 仅本设备可见, 不会上传。",
+        )
+        c1, c2 = st.columns([1, 1])
+        if c1.button("保存到本浏览器"):
+            if api_key.strip():
+                st_javascript(f"localStorage.setItem('poll_api_key', '{api_key.strip()}')")
+                st.session_state["api_key"] = api_key.strip()
+                st.success("已保存, 下次打开本浏览器自动填入")
+            else:
+                st.warning("API Key 为空")
+        if c2.button("清除已保存"):
+            st_javascript("localStorage.removeItem('poll_api_key')")
+            st.session_state["api_key"] = ""
+            st.success("已清除")
+
         base_url = st.text_input("Base URL", value="https://api.deepseek.com", key="llm_base")
         model = st.text_input("模型", value="deepseek-chat", key="llm_model")
         news_text = st.text_area(
