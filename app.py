@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT))
 from src.aggregate import combine, pollster_support  # noqa: E402
 from src.crosstab import support_rate, demographic_pyramid  # noqa: E402
 from src.wiki_fetch import fetch as wiki_fetch  # noqa: E402
-from src.llm_extract import extract_crosstab, records_from_crosstab  # noqa: E402
+from src.llm_extract import extract_crosstab, records_from_crosstab, fetch_article_text  # noqa: E402
 
 st.set_page_config(page_title="民调支持者画像", layout="wide")
 st.title("民调支持者画像分析")
@@ -144,22 +144,38 @@ with st.sidebar:
 
         base_url = st.text_input("Base URL", value="https://api.deepseek.com", key="llm_base")
         model = st.text_input("模型", value="deepseek-chat", key="llm_model")
+        news_url = st.text_input(
+            "新闻网址 (留空则用下面粘贴的文字)",
+            key="llm_url",
+            placeholder="https://news.tvbs.com.tw/...",
+        )
         news_text = st.text_area(
-            "粘贴新闻正文",
+            "粘贴新闻正文 (留空则自动抓上面网址)",
             height=150,
             key="llm_text",
             help="把包含年龄/性别/教育/地区交叉表的新闻文字粘进来。",
         )
         if st.button("提取交叉表"):
-            if not api_key or not news_text.strip():
-                st.warning("需要 API Key 和新闻正文")
+            if not api_key:
+                st.warning("需要 API Key")
             else:
-                try:
-                    data = extract_crosstab(news_text.strip(), api_key, base_url, model)
-                    st.session_state["llm_records"] = records_from_crosstab(data)
-                    st.success(f"提取到 {len(st.session_state['llm_records'])} 行")
-                except Exception as e:
-                    st.error(f"提取失败: {e}")
+                source_text = news_text.strip()
+                if not source_text and news_url.strip():
+                    try:
+                        with st.spinner("抓取新闻正文..."):
+                            source_text = fetch_article_text(news_url.strip())
+                        st.success(f"已抓取正文 {len(source_text)} 字")
+                    except Exception as e:
+                        st.error(f"抓取正文失败: {e}")
+                if not source_text:
+                    st.warning("需要新闻正文或网址")
+                else:
+                    try:
+                        data = extract_crosstab(source_text, api_key, base_url, model)
+                        st.session_state["llm_records"] = records_from_crosstab(data)
+                        st.success(f"提取到 {len(st.session_state['llm_records'])} 行")
+                    except Exception as e:
+                        st.error(f"提取失败: {e}")
     llm_records = st.session_state.get("llm_records")
 
     st.header("选择选举")

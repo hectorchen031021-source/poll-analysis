@@ -11,6 +11,7 @@ import re
 
 import pandas as pd
 import requests
+from bs4 import BeautifulSoup
 
 SYSTEM_PROMPT = """你是民调数据提取器。从新闻正文中提取候选人的支持率交叉表。
 
@@ -129,3 +130,21 @@ def _norm_group(dim: str, name: str) -> str:
     if dim == "gender":
         return {"男": "male", "男性": "male", "male": "male", "女": "female", "女性": "female", "female": "female"}.get(name, name)
     return name
+
+
+def fetch_article_text(url: str) -> str:
+    """抓取新闻/网页正文的纯文本 (去 script/style/nav 噪音)。"""
+    r = requests.get(
+        url,
+        headers={"User-Agent": "Mozilla/5.0 (poll-analysis; educational use)"},
+        timeout=30,
+    )
+    r.raise_for_status()
+    r.encoding = r.apparent_encoding or r.encoding
+    soup = BeautifulSoup(r.text, "lxml")
+    for tag in soup(["script", "style", "noscript", "nav", "footer", "header"]):
+        tag.decompose()
+    body = soup.find("article") or soup.find("main") or soup.body
+    text = body.get_text("\n") if body else soup.get_text("\n")
+    lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+    return "\n".join(lines)
