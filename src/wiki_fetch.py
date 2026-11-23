@@ -34,21 +34,26 @@ UA = {"User-Agent": "poll-analysis/1.0 (educational use)"}
 
 
 def search(query: str) -> str:
-    """用 opensearch 找最匹配的词条标题。"""
+    """用全文搜索找最匹配的选举词条标题。"""
     url = f"{WIKI}/w/api.php"
     params = {
-        "action": "opensearch",
-        "search": query,
-        "limit": 1,
+        "action": "query",
+        "list": "search",
+        "srsearch": query,
+        "srlimit": 5,
         "format": "json",
     }
     r = requests.get(url, params=params, headers=UA, timeout=20)
     r.raise_for_status()
-    data = r.json()
-    titles = data[1] if len(data) > 1 else []
-    if not titles:
+    results = r.json().get("query", {}).get("search", [])
+    if not results:
         raise ValueError(f"维基百科找不到「{query}」")
-    return titles[0]
+    # 优先选标题含「选举/選舉」的结果
+    for item in results:
+        title = item["title"]
+        if "選舉" in title or "选举" in title:
+            return title
+    return results[0]["title"]
 
 
 def _title_from_query(query: str) -> str:
@@ -177,7 +182,17 @@ def _record(pollster: str, date: str, party: str, pct: float) -> dict:
 
 
 def fetch(query: str) -> pd.DataFrame:
-    """入口: 词条名或 URL -> 统一 schema DataFrame。"""
+    """入口: 词条名或 URL -> 统一 schema DataFrame。
+
+    直接访问 404 时回退到搜索 (处理繁体/简体/漏字等输入不精确的情况)。
+    """
     title = _title_from_query(query)
-    html = fetch_html(title)
+    try:
+        html = fetch_html(title)
+    except requests.HTTPError as e:
+        if e.response is not None and e.response.status_code == 404:
+            title = search(title)
+            html = fetch_html(title)
+        else:
+            raise
     return parse_poll_table(html)
