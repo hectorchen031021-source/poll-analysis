@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PollRecord",
+  "description": "统一民调记录: 每条 = 一个 (人口维度 x 政党选择) 的计数单元",
+  "type": "object",
+  "required": [
+    "pollster",
+    "survey_date",
+    "age_bin",
+    "gender",
+    "party",
+    "n"
+  ],
+  "properties": {
+    "pollster": { "type": "string", "description": "机构名, 如 YouGov" },
+    "survey_date": { "type": "string", "format": "date" },
+    "method": {
+      "type": "string",
+      "enum": ["online", "CATI", "IVR", "in-person", "mixed", "unknown"]
+    },
+    "age_bin": {
+      "type": "string",
+      "description": "统一年龄段, 如 18-29 / 30-44 / 45-64 / 65+"
+    },
+    "gender": {
+      "type": "string",
+      "enum": ["male", "female", "other", "unknown"]
+    },
+    "region": { "type": "string" },
+    "education": {
+      "type": "string",
+      "enum": ["less_than_hs", "hs", "some_college", "college", "postgrad", "unknown"]
+    },
+    "party": {
+      "type": "string",
+      "description": "政党/候选人选择, 含 undecided / refused"
+    },
+    "n": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "该单元的原始未加权计数"
+    },
+    "weighted_n": {
+      "type": "number",
+      "minimum": 0,
+      "description": "加权后计数, 由 raking 流水线填充"
+    }
+  }
+}
