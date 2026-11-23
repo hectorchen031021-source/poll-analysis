@@ -4,9 +4,6 @@ __pycache__/
 .DS_Store
 .venv/
 venv/
-data/output/*
-!data/output/demo_pollco/
-!data/output/taipei_mayor_demo/
-!data/output/taipei_mayor_2026/
+data/output/
 data/processed/
 .ipynb_checkpoints/
