@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -114,36 +115,55 @@ with st.sidebar:
 
     st.header("LLM 提取交叉表")
     with st.expander("展开 (从新闻正文提取年龄/性别)", expanded=False):
-        # 从本浏览器 localStorage 读回已保存的 API key (st_javascript 首次异步, 等待一次 rerun)
-        if "saved_api_key" not in st.session_state:
-            _saved = st_javascript("localStorage.getItem('poll_api_key')")
-            if _saved is None:
+        # 从本浏览器 localStorage 读回已保存的 LLM 配置 (api_key/base_url/model)
+        if "llm_cfg_loaded" not in st.session_state:
+            _raw = st_javascript("localStorage.getItem('poll_llm_cfg')")
+            if _raw is None:
                 st.stop()
-            st.session_state["saved_api_key"] = "" if _saved == "null" else _saved
+            try:
+                _cfg = json.loads(_raw) if _raw and _raw != "null" else {}
+            except Exception:
+                _cfg = {}
+            st.session_state["llm_cfg_loaded"] = True
+            st.session_state["saved_cfg"] = _cfg
+
+        saved_cfg = st.session_state.get("saved_cfg", {})
 
         api_key = st.text_input(
             "API Key",
             type="password",
             key="api_key",
-            value=st.session_state["saved_api_key"],
+            value=saved_cfg.get("api_key", ""),
             help="保存在你自己的浏览器 localStorage, 仅本设备可见, 不会上传。",
         )
-        c1, c2 = st.columns([1, 1])
-        if c1.button("保存到本浏览器"):
-            if api_key.strip():
-                st_javascript(f"localStorage.setItem('poll_api_key', '{api_key.strip()}')")
-                st.session_state["saved_api_key"] = api_key.strip()
-                st.success("已保存, 下次打开本浏览器自动填入")
-            else:
-                st.warning("API Key 为空")
-        if c2.button("清除已保存"):
-            st_javascript("localStorage.removeItem('poll_api_key')")
-            st.session_state["saved_api_key"] = ""
-            st.session_state.pop("api_key", None)
-            st.rerun()
+        base_url = st.text_input(
+            "Base URL",
+            key="llm_base",
+            value=saved_cfg.get("base_url", "https://api.deepseek.com"),
+        )
+        model = st.text_input(
+            "模型",
+            key="llm_model",
+            value=saved_cfg.get("model", "deepseek-chat"),
+        )
 
-        base_url = st.text_input("Base URL", value="https://api.deepseek.com", key="llm_base")
-        model = st.text_input("模型", value="deepseek-chat", key="llm_model")
+        c1, c2 = st.columns([1, 1])
+        if c1.button("保存配置到本浏览器"):
+            cfg_to_save = {
+                "api_key": api_key.strip(),
+                "base_url": base_url.strip(),
+                "model": model.strip(),
+            }
+            st_javascript(f"localStorage.setItem('poll_llm_cfg', '{json.dumps(cfg_to_save, ensure_ascii=False)}')")
+            st.session_state["saved_cfg"] = cfg_to_save
+            st.success("已保存, 下次打开本浏览器自动填入")
+        if c2.button("清除已保存"):
+            st_javascript("localStorage.removeItem('poll_llm_cfg')")
+            st.session_state["saved_cfg"] = {}
+            st.session_state.pop("api_key", None)
+            st.session_state.pop("llm_base", None)
+            st.session_state.pop("llm_model", None)
+            st.rerun()
         news_url = st.text_input(
             "新闻网址 (留空则用下面粘贴的文字)",
             key="llm_url",
