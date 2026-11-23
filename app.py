@@ -24,7 +24,7 @@ from src.aggregate import combine, pollster_support  # noqa: E402
 from src.crosstab import support_rate, demographic_pyramid  # noqa: E402
 from src.wiki_fetch import fetch as wiki_fetch  # noqa: E402
 from src.llm_extract import extract_crosstab, records_from_crosstab, fetch_article_text  # noqa: E402
-from src.bias import compute_2022_bias, PARTY_BIAS, CANDIDATE_PARTY, POLL_2022, RESULT_2022, UNDECIDED_2022  # noqa: E402
+from src.bias import party_bias_history, history_table, house_effect, adjust_by_party_bias, CANDIDATE_PARTY  # noqa: E402
 
 st.set_page_config(page_title="民调支持者画像", layout="wide")
 st.title("民调支持者画像分析")
@@ -308,39 +308,37 @@ st.dataframe(
 
 # ---- 偏好伪装偏差 ----
 st.subheader("偏好伪装偏差 (Preference Falsification)")
-bias_2022 = compute_2022_bias()
+st.caption("历史封关民调 vs 实际结果。正值 = 该阵营支持被民调低估 (害羞支持者 / 偏好伪装)。")
+st.dataframe(history_table().round(2), use_container_width=True)
+
+st.markdown("**多届平均阵营偏差** (供当前选举外推):")
+party_bias = party_bias_history()
 st.dataframe(
-    pd.DataFrame(
-        {
-            "封关民调(含未表态)": POLL_2022,
-            "实际得票率": RESULT_2022,
-            "偏好伪装偏差": bias_2022,
-        }
-    ).round(2),
+    pd.DataFrame([{"阵营": k, "平均偏差": f"{v:+.2f}%"} for k, v in party_bias.items()]),
     use_container_width=True,
 )
-st.caption(
-    f"基于 2022 台北市长: 封关民调平均 vs 实际结果 (未表态 {UNDECIDED_2022}% 归一化后对比)。"
-    "正值 = 该阵营支持被民调低估 (害羞支持者 / 偏好伪装)。"
-)
 
+# 机构效应
+st.subheader("机构效应 (House Effect)")
+st.caption("每家机构相对全体平均的偏差, 正值 = 该机构偏蓝 (对蒋万安高估)。")
+st.dataframe(house_effect(sub), use_container_width=True)
+
+# 应用到当前
 adjusted_rows = []
 for cand in parties:
     rate = merged[merged["party"] == cand]["weighted_n"].sum() / total * 100
-    camp = CANDIDATE_PARTY.get(cand)
-    if camp is None:
+    if CANDIDATE_PARTY.get(cand) is None:
         continue
-    bias = PARTY_BIAS.get(camp, 0.0)
+    adj = adjust_by_party_bias({cand: rate})[cand]
     adjusted_rows.append(
         {
             "候选人": cand,
             "民调支持率": f"{rate:.1f}%",
-            "历史偏差": f"{bias:+.2f}%",
-            "调整后": f"{rate + bias:.1f}%",
+            "调整后预测": f"{adj:.1f}%",
         }
     )
 if adjusted_rows:
-    st.markdown("应用到当前选举 (民调支持率 + 历史偏差 = 调整后预测):")
+    st.markdown("应用到当前选举 (民调 + 多届平均偏差):")
     st.dataframe(pd.DataFrame(adjusted_rows), use_container_width=True)
 else:
     st.caption("当前候选人不在此历史阵营映射中, 无法自动应用偏差。")
